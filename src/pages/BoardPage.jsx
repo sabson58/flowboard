@@ -1,3 +1,4 @@
+import confetti from 'canvas-confetti'
 import { logActivity } from '../hooks/useActivity'
 import { inviteMember } from '../hooks/useMembers'
 import { useKeyboard } from '../hooks/useKeyboard'
@@ -15,6 +16,7 @@ import {
 } from '@dnd-kit/core'
 import {
   SortableContext, verticalListSortingStrategy,
+  horizontalListSortingStrategy,
   useSortable, arrayMove
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -240,6 +242,130 @@ function CardDetailModal({ card, columnId, boardId, onClose, onSave, onDelete })
                 <button onClick={addLabel} style={{ padding: '6px 10px', background: 'var(--surface3)', border: '1px solid var(--border)', borderRadius: 7, color: 'var(--text2)', fontSize: 12, cursor: 'pointer' }}>+</button>
               </div>
             </div>
+            {/* Assign to */}
+            <div style={{ marginBottom: '1.25rem' }}>
+              <div style={sideLabel}>Assigned To</div>
+
+              {/* Current assignee */}
+              {card.assignedTo ? (
+                <div style={{
+                  display: 'flex', alignItems: 'center',
+                  gap: 8, padding: '8px 10px',
+                  background: 'var(--surface2)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 8, marginBottom: 8,
+                }}>
+                  <div style={{
+                    width: 24, height: 24, borderRadius: '50%',
+                    background: 'var(--accent)',
+                    display: 'flex', alignItems: 'center',
+                    justifyContent: 'center', fontSize: 11,
+                    fontWeight: 700, color: 'white',
+                  }}>
+                    {card.assignedName?.[0]?.toUpperCase()}
+                  </div>
+                  <span style={{ fontSize: 12, color: 'var(--text)', flex: 1 }}>
+                    {card.assignedName}
+                  </span>
+                  <button
+                    onClick={async () => {
+                      await updateDoc(
+                        doc(db, 'boards', boardId, 'columns', columnId, 'cards', card.id),
+                        { assignedTo: null, assignedName: null }
+                      )
+                    }}
+                    style={{
+                      background: 'none', border: 'none',
+                      color: 'var(--text3)', cursor: 'pointer',
+                      fontSize: 14,
+                    }}
+                  >×</button>
+                </div>
+              ) : (
+                <p style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 8 }}>
+                  Not assigned
+                </p>
+              )}
+
+              {/* Assign to me button */}
+              <button
+                onClick={async () => {
+                  await updateDoc(
+                    doc(db, 'boards', boardId, 'columns', columnId, 'cards', card.id),
+                    {
+                      assignedTo: user.uid,
+                      assignedName: user.displayName || user.email
+                    }
+                  )
+                  await logActivity(boardId, user, `self-assigned a card`)
+                }}
+                style={{
+                  width: '100%', padding: '7px 12px',
+                  background: 'var(--surface2)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 8, color: 'var(--text2)',
+                  fontSize: 12, fontWeight: 600,
+                  cursor: 'pointer', transition: 'all 0.15s',
+                  fontFamily: 'Inter, sans-serif',
+                  display: 'flex', alignItems: 'center',
+                  gap: 6, justifyContent: 'center',
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.borderColor = 'var(--accent)'
+                  e.currentTarget.style.color = 'var(--accent)'
+                  e.currentTarget.style.background = 'var(--accent-dim)'
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.borderColor = 'var(--border)'
+                  e.currentTarget.style.color = 'var(--text2)'
+                  e.currentTarget.style.background = 'var(--surface2)'
+                }}
+              >
+                <div style={{
+                  width: 18, height: 18, borderRadius: '50%',
+                  background: 'var(--accent)',
+                  display: 'flex', alignItems: 'center',
+                  justifyContent: 'center', fontSize: 9,
+                  fontWeight: 700, color: 'white',
+                }}>
+                  {user?.displayName?.[0]?.toUpperCase() || '?'}
+                </div>
+                Assign to me
+              </button>
+            </div>
+
+            {/* Mark as done */}
+            {columnId !== 'done' && (
+              <button
+                onClick={async () => {
+                  await deleteDoc(doc(db, 'boards', boardId, 'columns', columnId, 'cards', card.id))
+                  await addDoc(
+                    collection(db, 'boards', boardId, 'columns', 'done', 'cards'),
+                    { ...card, order: Date.now(), createdAt: Date.now() }
+                  )
+                  onClose()
+                  confetti({
+                    particleCount: 150, spread: 80,
+                    origin: { y: 0.6 },
+                    colors: ['#7c6aff', '#4dff91', '#ffd44d', '#ff4d4d'],
+                  })
+                }}
+                style={{
+                  width: '100%', padding: '8px',
+                  background: 'rgba(77,255,145,0.1)',
+                  border: '1px solid rgba(77,255,145,0.25)',
+                  borderRadius: 8, color: 'var(--green)',
+                  fontSize: 12, fontWeight: 600,
+                  cursor: 'pointer', marginBottom: 8,
+                  transition: 'all 0.15s',
+                  fontFamily: 'Inter, sans-serif',
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = 'rgba(77,255,145,0.2)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'rgba(77,255,145,0.1)'}
+              >
+                🎉 Mark as Done
+              </button>
+            )}
             <button
               onClick={() => { if (confirm('Delete this card?')) { onDelete(card.id, columnId); onClose() } }}
               style={{ width: '100%', padding: '8px', background: 'var(--red-dim)', border: '1px solid rgba(255,77,77,0.2)', borderRadius: 8, color: 'var(--red)', fontSize: 12, fontWeight: 600, cursor: 'pointer', marginTop: '1rem' }}
@@ -274,6 +400,20 @@ function KanbanCard({ card, columnId, onEdit, onDelete, onOpen }) {
             {card.labels.map((l, i) => <span key={i} style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 4, background: 'var(--accent-dim)', color: 'var(--accent2)' }}>{l}</span>)}
           </div>
         )}
+        {/* Done indicator */}
+        {columnId === 'done' && (
+          <div style={{
+            position: 'absolute',
+            top: 8, right: 8,
+            width: 18, height: 18,
+            borderRadius: '50%',
+            background: 'rgba(77,255,145,0.15)',
+            border: '1px solid rgba(77,255,145,0.3)',
+            display: 'flex', alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 10, color: 'var(--green)',
+          }}>✓</div>
+        )}
         {/* Clickable title */}
         <div
           onPointerDown={e => e.stopPropagation()}
@@ -287,7 +427,24 @@ function KanbanCard({ card, columnId, onEdit, onDelete, onOpen }) {
             <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: p.bg, color: p.color, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{p.label}</span>
             {card.dueDate && <span style={{ fontSize: 11, color: 'var(--text3)', display: 'flex', alignItems: 'center', gap: 3 }}>📅 {new Date(card.dueDate).toLocaleDateString('en', { month: 'short', day: 'numeric' })}</span>}
           </div>
-          <div style={{ display: 'flex', gap: 4 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            {/* Assigned avatar */}
+            {card.assignedTo && (
+              <div
+                title={card.assignedName}
+                style={{
+                  width: 22, height: 22, borderRadius: '50%',
+                  background: 'var(--accent)',
+                  display: 'flex', alignItems: 'center',
+                  justifyContent: 'center', fontSize: 10,
+                  fontWeight: 700, color: 'white',
+                  border: '2px solid var(--surface2)',
+                  flexShrink: 0,
+                }}
+              >
+                {card.assignedName?.[0]?.toUpperCase() || '?'}
+              </div>
+            )}
             <button onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); onEdit(card, columnId) }} style={{ width: 24, height: 24, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface3)', color: 'var(--text2)', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✏️</button>
             <button onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); onDelete(card.id, columnId) }} style={{ width: 24, height: 24, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface3)', color: 'var(--text2)', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>🗑</button>
           </div>
@@ -298,7 +455,21 @@ function KanbanCard({ card, columnId, onEdit, onDelete, onOpen }) {
 }
 
 // ── KANBAN COLUMN ─────────────────────────────────────────
-function KanbanColumn({ column, cards, onAddCard, onEditCard, onDeleteCard, onOpenCard }) {
+function KanbanColumn({ column, cards, onAddCard, onEditCard, onDeleteCard, onOpenCard, onRename, onDeleteColumn }) {
+  const {
+    attributes, listeners, setNodeRef,
+    transform, transition, isDragging
+  } = useSortable({
+    id: column.id,
+    data: { type: 'column', column }
+  })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  }
+
   const [adding, setAdding] = useState(false)
   const [newTitle, setNewTitle] = useState('')
 
@@ -309,42 +480,175 @@ function KanbanColumn({ column, cards, onAddCard, onEditCard, onDeleteCard, onOp
   }
 
   return (
-    <div style={{ width: 300, flexShrink: 0, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - 140px)' }}>
-      <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ width: 8, height: 8, borderRadius: '50%', background: column.color, flexShrink: 0, boxShadow: `0 0 8px ${column.color}` }}/>
-          <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.01em' }}>{column.title}</span>
-          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text3)', background: 'var(--surface2)', padding: '1px 7px', borderRadius: 20, border: '1px solid var(--border)' }}>{cards.length}</span>
+    <div
+      ref={setNodeRef}
+      style={{
+        ...style,
+        width: 300, flexShrink: 0,
+        background: 'var(--surface)',
+        border: '1px solid var(--border)',
+        borderRadius: 16,
+        display: 'flex', flexDirection: 'column',
+        maxHeight: 'calc(100vh - 140px)',
+      }}
+    >
+      {/* Column header — drag handle here */}
+      <div
+        style={{
+          padding: '14px 16px',
+          borderBottom: '1px solid var(--border)',
+          display: 'flex', alignItems: 'center',
+          justifyContent: 'space-between',
+          flexShrink: 0, cursor: 'grab',
+        }}
+        {...attributes}
+        {...listeners}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
+          <div style={{
+            width: 8, height: 8, borderRadius: '50%',
+            background: column.color, flexShrink: 0,
+            boxShadow: `0 0 8px ${column.color}`,
+          }}/>
+          <span
+            style={{
+              fontSize: 13, fontWeight: 700,
+              color: 'var(--text)', letterSpacing: '-0.01em',
+              cursor: 'text',
+            }}
+            onPointerDown={e => e.stopPropagation()}
+            onDoubleClick={() => onRename(column.id, column.title)}
+            title="Double-click to rename"
+          >
+            {column.title}
+          </span>
+          <span style={{
+            fontSize: 11, fontWeight: 700,
+            color: 'var(--text3)', background: 'var(--surface2)',
+            padding: '1px 7px', borderRadius: 20,
+            border: '1px solid var(--border)',
+          }}>
+            {cards.length}
+          </span>
         </div>
-        <button
-          onClick={() => setAdding(true)}
-          style={{ width: 26, height: 26, borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text2)', cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s' }}
-          onMouseEnter={e => { e.currentTarget.style.background = 'var(--accent-dim)'; e.currentTarget.style.color = 'var(--accent)'; e.currentTarget.style.borderColor = 'var(--accent)' }}
-          onMouseLeave={e => { e.currentTarget.style.background = 'var(--surface2)'; e.currentTarget.style.color = 'var(--text2)'; e.currentTarget.style.borderColor = 'var(--border)' }}
-        >+</button>
+
+        {/* Column actions */}
+        <div style={{ display: 'flex', gap: 4 }}>
+          <button
+            onPointerDown={e => e.stopPropagation()}
+            onClick={e => { e.stopPropagation(); setAdding(true) }}
+            style={{
+              width: 26, height: 26, borderRadius: 7,
+              border: '1px solid var(--border)',
+              background: 'var(--surface2)',
+              color: 'var(--text2)', cursor: 'pointer',
+              fontSize: 16, display: 'flex',
+              alignItems: 'center', justifyContent: 'center',
+              transition: 'all 0.15s',
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = 'var(--accent-dim)'
+              e.currentTarget.style.color = 'var(--accent)'
+              e.currentTarget.style.borderColor = 'var(--accent)'
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = 'var(--surface2)'
+              e.currentTarget.style.color = 'var(--text2)'
+              e.currentTarget.style.borderColor = 'var(--border)'
+            }}
+          >+</button>
+
+          <button
+            onPointerDown={e => e.stopPropagation()}
+            onClick={e => { e.stopPropagation(); onDeleteColumn(column.id) }}
+            style={{
+              width: 26, height: 26, borderRadius: 7,
+              border: '1px solid var(--border)',
+              background: 'var(--surface2)',
+              color: 'var(--text3)', cursor: 'pointer',
+              fontSize: 12, display: 'flex',
+              alignItems: 'center', justifyContent: 'center',
+              transition: 'all 0.15s',
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = 'var(--red-dim)'
+              e.currentTarget.style.color = 'var(--red)'
+              e.currentTarget.style.borderColor = 'rgba(255,77,77,0.3)'
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = 'var(--surface2)'
+              e.currentTarget.style.color = 'var(--text3)'
+              e.currentTarget.style.borderColor = 'var(--border)'
+            }}
+            title="Delete column"
+          >✕</button>
+        </div>
       </div>
+
+      {/* Cards */}
       <div style={{ padding: '12px', overflowY: 'auto', flex: 1 }}>
-        <SortableContext items={cards.map(c => c.id)} strategy={verticalListSortingStrategy}>
+        <SortableContext
+          items={cards.map(c => c.id)}
+          strategy={verticalListSortingStrategy}
+        >
           {cards.map(card => (
-            <KanbanCard key={card.id} card={card} columnId={column.id} onEdit={onEditCard} onDelete={onDeleteCard} onOpen={onOpenCard} />
+            <KanbanCard
+              key={card.id}
+              card={card}
+              columnId={column.id}
+              onEdit={onEditCard}
+              onDelete={onDeleteCard}
+              onOpen={onOpenCard}
+            />
           ))}
         </SortableContext>
+
         {cards.length === 0 && !adding && (
-          <div style={{ textAlign: 'center', padding: '2rem 1rem', color: 'var(--text3)', fontSize: 13, border: '2px dashed var(--border)', borderRadius: 10 }}>No cards yet</div>
+          <div style={{
+            textAlign: 'center', padding: '2rem 1rem',
+            color: 'var(--text3)', fontSize: 13,
+            border: '2px dashed var(--border)', borderRadius: 10,
+          }}>
+            No cards yet
+          </div>
         )}
+
         {adding && (
-          <div style={{ background: 'var(--surface2)', border: '1px solid var(--accent)', borderRadius: 10, padding: 10, marginTop: 4 }}>
+          <div style={{
+            background: 'var(--surface2)',
+            border: '1px solid var(--accent)',
+            borderRadius: 10, padding: 10, marginTop: 4,
+          }}>
             <textarea
               value={newTitle}
               onChange={e => setNewTitle(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAdd() } if (e.key === 'Escape') { setAdding(false); setNewTitle('') } }}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAdd() }
+                if (e.key === 'Escape') { setAdding(false); setNewTitle('') }
+              }}
               placeholder="Card title... (Enter to save)"
               autoFocus rows={2}
-              style={{ width: '100%', background: 'none', border: 'none', color: 'var(--text)', fontSize: 14, resize: 'none', outline: 'none', fontFamily: 'Inter, sans-serif', marginBottom: 8 }}
+              style={{
+                width: '100%', background: 'none',
+                border: 'none', color: 'var(--text)',
+                fontSize: 14, resize: 'none',
+                outline: 'none', fontFamily: 'Inter, sans-serif',
+                marginBottom: 8,
+              }}
             />
             <div style={{ display: 'flex', gap: 6 }}>
-              <button onClick={handleAdd} style={{ padding: '5px 14px', background: 'var(--accent)', border: 'none', borderRadius: 7, color: 'white', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Add card</button>
-              <button onClick={() => { setAdding(false); setNewTitle('') }} style={{ padding: '5px 10px', background: 'none', border: '1px solid var(--border)', borderRadius: 7, color: 'var(--text2)', fontSize: 12, cursor: 'pointer' }}>Cancel</button>
+              <button onClick={handleAdd} style={{
+                padding: '5px 14px', background: 'var(--accent)',
+                border: 'none', borderRadius: 7,
+                color: 'white', fontSize: 12,
+                fontWeight: 600, cursor: 'pointer',
+              }}>Add card</button>
+              <button onClick={() => { setAdding(false); setNewTitle('') }} style={{
+                padding: '5px 10px', background: 'none',
+                border: '1px solid var(--border)',
+                borderRadius: 7, color: 'var(--text2)',
+                fontSize: 12, cursor: 'pointer',
+              }}>Cancel</button>
             </div>
           </div>
         )}
@@ -666,6 +970,169 @@ function ShortcutsModal({ onClose }) {
   )
 }
 
+// ── STATS PANEL ───────────────────────────────────────────
+function StatsPanel({ cards, columns, columnOrder, board, onClose }) {
+  const allCards = Object.values(cards).flat()
+  const total = allCards.length
+  const done = (cards['done'] || []).length
+  const highPriority = allCards.filter(c => c.priority === 'high').length
+  const overdue = allCards.filter(c => {
+    if (!c.dueDate || c.completed) return false
+    return new Date(c.dueDate) < new Date()
+  }).length
+  const assigned = allCards.filter(c => c.assignedTo).length
+  const completion = total ? Math.round((done / total) * 100) : 0
+
+  const colData = columnOrder.map(id => {
+    const col = columns.find(c => c.id === id)
+    return { title: col?.title || id, count: (cards[id] || []).length, color: col?.color || '#6b7280' }
+  })
+
+  const priorities = [
+    { label: 'High', color: '#ff4d4d', bg: 'rgba(255,77,77,0.12)', count: allCards.filter(c => c.priority === 'high').length },
+    { label: 'Medium', color: '#ffd44d', bg: 'rgba(255,212,77,0.12)', count: allCards.filter(c => c.priority === 'medium').length },
+    { label: 'Low', color: '#4dff91', bg: 'rgba(77,255,145,0.12)', count: allCards.filter(c => c.priority === 'low').length },
+  ]
+
+  const maxCol = Math.max(...colData.map(c => c.count), 1)
+
+  return (
+    <div style={{
+      position: 'fixed', top: 56, right: 0, bottom: 0,
+      width: 340, background: 'var(--surface)',
+      borderLeft: '1px solid var(--border)',
+      zIndex: 50, display: 'flex',
+      flexDirection: 'column',
+      animation: 'slideInRight 0.25s ease',
+      overflowY: 'auto',
+    }}>
+      {/* Header */}
+      <div style={{
+        padding: '1rem 1.25rem',
+        borderBottom: '1px solid var(--border)',
+        display: 'flex', alignItems: 'center',
+        justifyContent: 'space-between',
+        position: 'sticky', top: 0,
+        background: 'var(--surface)', zIndex: 1,
+      }}>
+        <span style={{ fontSize: 14, fontWeight: 700 }}>📊 Board Stats</span>
+        <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text2)', cursor: 'pointer', fontSize: 18 }}>×</button>
+      </div>
+
+      <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+
+        {/* KPI Cards */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          {[
+            { label: 'Total Cards', value: total, color: 'var(--text)' },
+            { label: 'Completed', value: done, color: 'var(--green)' },
+            { label: 'High Priority', value: highPriority, color: 'var(--red)' },
+            { label: 'Overdue', value: overdue, color: overdue > 0 ? 'var(--red)' : 'var(--text3)' },
+            { label: 'Assigned', value: assigned, color: 'var(--accent)' },
+            { label: 'Unassigned', value: total - assigned, color: 'var(--text3)' },
+          ].map(kpi => (
+            <div key={kpi.label} style={{
+              background: 'var(--surface2)', border: '1px solid var(--border)',
+              borderRadius: 12, padding: '12px', textAlign: 'center', transition: 'all 0.2s',
+            }}
+              onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border2)'}
+              onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
+            >
+              <div style={{ fontSize: 24, fontWeight: 800, color: kpi.color, marginBottom: 4, letterSpacing: '-0.03em' }}>{kpi.value}</div>
+              <div style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{kpi.label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Completion progress */}
+        <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 12, padding: '1rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>Overall Progress</span>
+            <span style={{
+              fontSize: 18, fontWeight: 800, letterSpacing: '-0.02em',
+              color: completion >= 70 ? 'var(--green)' : completion >= 40 ? 'var(--yellow)' : 'var(--red)',
+            }}>{completion}%</span>
+          </div>
+          <div style={{ height: 8, background: 'var(--surface3)', borderRadius: 4, overflow: 'hidden' }}>
+            <div style={{
+              height: '100%', width: `${completion}%`,
+              background: completion >= 70 ? 'var(--green)' : completion >= 40 ? 'var(--yellow)' : 'var(--accent)',
+              borderRadius: 4, transition: 'width 0.8s cubic-bezier(0.4,0,0.2,1)',
+            }}/>
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 6, textAlign: 'right' }}>
+            {done} of {total} cards done
+          </div>
+        </div>
+
+        {/* Cards per column bar chart */}
+        <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 12, padding: '1rem' }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', marginBottom: '1rem' }}>Cards per Column</div>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 80 }}>
+            {colData.map((col, i) => (
+              <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, height: '100%', justifyContent: 'flex-end' }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: col.count > 0 ? 'var(--text2)' : 'transparent' }}>{col.count}</span>
+                <div style={{
+                  width: '100%',
+                  height: `${Math.max((col.count / maxCol) * 60, col.count > 0 ? 6 : 2)}px`,
+                  background: col.count > 0 ? col.color : 'var(--border)',
+                  borderRadius: '4px 4px 0 0',
+                  transition: 'height 0.6s cubic-bezier(0.4,0,0.2,1)',
+                  boxShadow: col.count > 0 ? `0 0 12px ${col.color}40` : 'none',
+                }}/>
+                <span style={{ fontSize: 9, color: 'var(--text3)', fontWeight: 600, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%' }}>
+                  {col.title.slice(0, 6)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Priority breakdown */}
+        <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 12, padding: '1rem' }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', marginBottom: '1rem' }}>Priority Breakdown</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {priorities.map(p => (
+              <div key={p.label}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: p.color, background: p.bg, padding: '2px 8px', borderRadius: 6 }}>{p.label}</span>
+                  <span style={{ fontSize: 11, color: 'var(--text2)', fontWeight: 600 }}>
+                    {p.count} card{p.count !== 1 ? 's' : ''}
+                    {total > 0 && <span style={{ color: 'var(--text3)', fontWeight: 400 }}> ({Math.round((p.count / total) * 100)}%)</span>}
+                  </span>
+                </div>
+                <div style={{ height: 5, background: 'var(--surface3)', borderRadius: 3, overflow: 'hidden' }}>
+                  <div style={{
+                    height: '100%', width: total > 0 ? `${(p.count / total) * 100}%` : '0%',
+                    background: p.color, borderRadius: 3,
+                    transition: 'width 0.6s cubic-bezier(0.4,0,0.2,1)',
+                  }}/>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Board info */}
+        <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 12, padding: '1rem' }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', marginBottom: '0.75rem' }}>Board Info</div>
+          {[
+            { label: 'Members', value: board?.members?.length || 1 },
+            { label: 'Columns', value: columnOrder.length },
+            { label: 'Created', value: board?.createdAt ? new Date(board.createdAt).toLocaleDateString('en', { month: 'short', day: 'numeric', year: 'numeric' }) : '—' },
+          ].map(info => (
+            <div key={info.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
+              <span style={{ fontSize: 12, color: 'var(--text3)' }}>{info.label}</span>
+              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>{info.value}</span>
+            </div>
+          ))}
+        </div>
+
+      </div>
+    </div>
+  )
+}
+
 // ── ACTIVITY PANEL ────────────────────────────────────────
 function ActivityPanel({ log, onClose }) {
   return (
@@ -736,6 +1203,9 @@ export default function BoardPage() {
   const [editingColumnId, setEditingColumnId] = useState(null)
   const [showCardModal, setShowCardModal] = useState(false)
   const [activeCard, setActiveCard] = useState(null)
+  const [activeColumn, setActiveColumn] = useState(null)
+  const [columnOrder, setColumnOrder] = useState(['todo', 'inprogress', 'review', 'done'])
+  const [columns, setColumns] = useState(DEFAULT_COLUMNS)
   const [openCard, setOpenCard] = useState(null)
   const [openCardColumnId, setOpenCardColumnId] = useState(null)
   const [showActivity, setShowActivity] = useState(false)
@@ -744,11 +1214,25 @@ export default function BoardPage() {
   const [showInvite, setShowInvite] = useState(false)
   const [showShortcuts, setShowShortcuts] = useState(false)
   const [showAI, setShowAI] = useState(false)
+  const [showStats, setShowStats] = useState(false)
   const [toastMsg, setToastMsg] = useState('')
 
   function toast(msg) {
     setToastMsg(msg)
     setTimeout(() => setToastMsg(''), 3000)
+  }
+
+  function fireConfetti() {
+    const count = 200
+    const defaults = { origin: { y: 0.7 } }
+    function fire(particleRatio, opts) {
+      confetti({ ...defaults, ...opts, particleCount: Math.floor(count * particleRatio) })
+    }
+    fire(0.25, { spread: 26, startVelocity: 55, colors: ['#7c6aff', '#a78bfa'] })
+    fire(0.2,  { spread: 60, colors: ['#ffd44d', '#f59e0b'] })
+    fire(0.35, { spread: 100, decay: 0.91, scalar: 0.8, colors: ['#4dff91', '#10b981'] })
+    fire(0.1,  { spread: 120, startVelocity: 25, decay: 0.92, scalar: 1.2, colors: ['#ff4d4d', '#f43f5e'] })
+    fire(0.1,  { spread: 120, startVelocity: 45, colors: ['#ffffff', '#e8d48a'] })
   }
 
   // Keyboard shortcuts
@@ -762,11 +1246,13 @@ export default function BoardPage() {
       setShowInvite(false)
       setShowShortcuts(false)
       setShowAI(false)
+      setShowStats(false)
       setSearch('')
     }},
     { key: 'a', action: () => setShowActivity(prev => !prev) },
     { key: 'i', action: () => setShowInvite(prev => !prev) },
     { key: 'g', action: () => setShowAI(prev => !prev) },
+    { key: 's', action: () => setShowStats(prev => !prev) },
   ])
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
@@ -779,6 +1265,11 @@ export default function BoardPage() {
     })
     return unsub
   }, [boardId])
+
+  useEffect(() => {
+    if (board?.columns) setColumns(board.columns)
+    if (board?.columnOrder) setColumnOrder(board.columnOrder)
+  }, [board])
 
   useEffect(() => {
     if (!boardId) return
@@ -806,6 +1297,7 @@ export default function BoardPage() {
     const colCards = cards[columnId] || []
     await addDoc(collection(db, 'boards', boardId, 'columns', columnId, 'cards'), {
       title, priority: 'medium', labels: [], dueDate: '',
+      assignedTo: null, assignedName: null,
       order: colCards.length, createdAt: Date.now(), createdBy: user.uid,
     })
     const colName = DEFAULT_COLUMNS.find(c => c.id === columnId)?.title
@@ -833,6 +1325,14 @@ export default function BoardPage() {
     setOpenCard(card); setOpenCardColumnId(columnId)
   }
 
+  async function assignCard(cardId, columnId, uid, name) {
+    await updateDoc(
+      doc(db, 'boards', boardId, 'columns', columnId, 'cards', cardId),
+      { assignedTo: uid, assignedName: name }
+    )
+    await logActivity(boardId, user, `assigned "${name}" to a card`)
+  }
+
   async function generateTasks(tasks) {
     for (const task of tasks) {
       const colCards = cards[task.column] || []
@@ -852,7 +1352,61 @@ export default function BoardPage() {
     toast('Tasks generated successfully!')
   }
 
+  async function addColumn() {
+    const title = prompt('Column name:')
+    if (!title?.trim()) return
+    const id = title.toLowerCase().replace(/\s+/g, '') + Date.now()
+    const color = ['#7c6aff','#f59e0b','#10b981','#3b82f6','#f43f5e'][
+      Math.floor(Math.random() * 5)
+    ]
+    const newCol = { id, title: title.trim(), color }
+    const newColumns = [...columns, newCol]
+    const newOrder = [...columnOrder, id]
+    setColumns(newColumns)
+    setColumnOrder(newOrder)
+    await updateDoc(doc(db, 'boards', boardId), {
+      columns: newColumns,
+      columnOrder: newOrder,
+    })
+    await logActivity(boardId, user, `added column "${title.trim()}"`)
+  }
+
+  async function renameColumn(colId, currentTitle) {
+    const title = prompt('New column name:', currentTitle)
+    if (!title?.trim() || title === currentTitle) return
+    const newColumns = columns.map(c =>
+      c.id === colId ? { ...c, title: title.trim() } : c
+    )
+    setColumns(newColumns)
+    await updateDoc(doc(db, 'boards', boardId), { columns: newColumns })
+    await logActivity(boardId, user, `renamed column to "${title.trim()}"`)
+  }
+
+  async function deleteColumn(colId) {
+    const col = columns.find(c => c.id === colId)
+    const colCards = cards[colId] || []
+    if (colCards.length > 0) {
+      if (!confirm(`"${col.title}" has ${colCards.length} card(s). Delete anyway?`)) return
+    } else {
+      if (!confirm(`Delete "${col.title}" column?`)) return
+    }
+    const newColumns = columns.filter(c => c.id !== colId)
+    const newOrder = columnOrder.filter(id => id !== colId)
+    setColumns(newColumns)
+    setColumnOrder(newOrder)
+    await updateDoc(doc(db, 'boards', boardId), {
+      columns: newColumns,
+      columnOrder: newOrder,
+    })
+    await logActivity(boardId, user, `deleted column "${col.title}"`)
+  }
+
   function handleDragStart(event) {
+    const { type } = event.active.data.current
+    if (type === 'column') {
+      setActiveColumn(event.active.data.current.column)
+      return
+    }
     const { card, columnId } = event.active.data.current
     setActiveCard({ ...card, columnId })
   }
@@ -860,9 +1414,28 @@ export default function BoardPage() {
   async function handleDragEnd(event) {
     const { active, over } = event
     setActiveCard(null)
+    setActiveColumn(null)
     if (!over) return
+
+    const activeType = active.data.current?.type
+    const overType = over.data.current?.type
+
+    // ── Column reorder ──────────────────────────
+    if (activeType === 'column') {
+      const oldIdx = columnOrder.indexOf(active.id)
+      const newIdx = columnOrder.indexOf(over.id)
+      if (oldIdx === newIdx) return
+      const newOrder = arrayMove(columnOrder, oldIdx, newIdx)
+      setColumnOrder(newOrder)
+      await updateDoc(doc(db, 'boards', boardId), { columnOrder: newOrder })
+      await logActivity(boardId, user, `reordered columns`)
+      return
+    }
+
+    // ── Card move ───────────────────────────────
     const fromCol = active.data.current.columnId
     const toCol = over.data.current?.columnId || fromCol
+
     if (fromCol === toCol) {
       const colCards = [...(cards[fromCol] || [])]
       const oldIdx = colCards.findIndex(c => c.id === active.id)
@@ -870,15 +1443,24 @@ export default function BoardPage() {
       if (oldIdx === newIdx) return
       const reordered = arrayMove(colCards, oldIdx, newIdx)
       setCards(prev => ({ ...prev, [fromCol]: reordered }))
-      reordered.forEach((card, i) => updateDoc(doc(db, 'boards', boardId, 'columns', fromCol, 'cards', card.id), { order: i }))
+      reordered.forEach((card, i) =>
+        updateDoc(doc(db, 'boards', boardId, 'columns', fromCol, 'cards', card.id), { order: i })
+      )
     } else {
       const card = (cards[fromCol] || []).find(c => c.id === active.id)
       if (!card) return
       await deleteDoc(doc(db, 'boards', boardId, 'columns', fromCol, 'cards', card.id))
       const toCards = cards[toCol] || []
-      await addDoc(collection(db, 'boards', boardId, 'columns', toCol, 'cards'), { ...card, order: toCards.length, createdAt: Date.now() })
-      const colName = DEFAULT_COLUMNS.find(c => c.id === toCol)?.title
+      await addDoc(
+        collection(db, 'boards', boardId, 'columns', toCol, 'cards'),
+        { ...card, order: toCards.length, createdAt: Date.now() }
+      )
+      const colName = columns.find(c => c.id === toCol)?.title
       await logActivity(boardId, user, `moved "${card.title}" to ${colName}`)
+
+      if (toCol === 'done') {
+        fireConfetti()
+      }
     }
   }
 
@@ -962,6 +1544,44 @@ export default function BoardPage() {
             <div style={{ height: '100%', width: totalCards > 0 ? `${(doneCards / totalCards) * 100}%` : '0%', background: 'var(--accent)', borderRadius: 2, transition: 'width 0.4s ease' }}/>
           </div>
         </div>
+        {/* Member avatars */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          {board?.members?.slice(0, 5).map((uid, i) => (
+            <div
+              key={uid}
+              style={{
+                width: 28, height: 28, borderRadius: '50%',
+                background: `hsl(${(i * 60) % 360}, 70%, 60%)`,
+                display: 'flex', alignItems: 'center',
+                justifyContent: 'center', fontSize: 11,
+                fontWeight: 700, color: 'white',
+                border: '2px solid var(--bg)',
+                marginLeft: i > 0 ? -8 : 0,
+                zIndex: 5 - i,
+                position: 'relative',
+              }}
+              title={uid === user.uid ? 'You' : 'Member'}
+            >
+              {uid === user.uid
+                ? user.displayName?.[0]?.toUpperCase()
+                : '?'
+              }
+            </div>
+          ))}
+          {board?.members?.length > 5 && (
+            <div style={{
+              width: 28, height: 28, borderRadius: '50%',
+              background: 'var(--surface3)',
+              display: 'flex', alignItems: 'center',
+              justifyContent: 'center', fontSize: 10,
+              fontWeight: 700, color: 'var(--text2)',
+              border: '2px solid var(--bg)',
+              marginLeft: -8,
+            }}>
+              +{board.members.length - 5}
+            </div>
+          )}
+        </div>
         {/* AI Generate button */}
         <button
           onClick={() => setShowAI(true)}
@@ -1011,6 +1631,20 @@ export default function BoardPage() {
         >
           ⌨️ Shortcuts
         </button>
+        {/* Stats toggle */}
+        <button
+          onClick={() => setShowStats(prev => !prev)}
+          style={{
+            padding: '6px 14px',
+            background: showStats ? 'var(--accent-dim)' : 'var(--surface2)',
+            border: `1px solid ${showStats ? 'var(--accent)' : 'var(--border)'}`,
+            borderRadius: 8, color: showStats ? 'var(--accent)' : 'var(--text2)',
+            fontSize: 12, fontWeight: 600,
+            cursor: 'pointer', transition: 'all 0.15s',
+          }}
+        >
+          📊 Stats
+        </button>
         {/* Activity toggle */}
         <button
           onClick={() => setShowActivity(prev => !prev)}
@@ -1029,31 +1663,112 @@ export default function BoardPage() {
 
       {/* Board */}
       <div style={{ flex: 1, overflowX: 'auto', padding: '2rem' }}>
-        <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-          <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', minWidth: 'max-content' }}>
-            {DEFAULT_COLUMNS.map(col => (
-              <KanbanColumn
-                key={col.id}
-                column={col}
-                cards={
-                  search.trim()
-                    ? (cards[col.id] || []).filter(c =>
-                        c.title.toLowerCase().includes(search.toLowerCase()) ||
-                        c.labels?.some(l => l.toLowerCase().includes(search.toLowerCase()))
-                      )
-                    : (cards[col.id] || [])
-                }
-                onAddCard={addCard}
-                onEditCard={openEditCard}
-                onDeleteCard={deleteCard}
-                onOpenCard={openCardDetail}
-              />
-            ))}
-          </div>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCorners}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext
+            items={columnOrder}
+            strategy={horizontalListSortingStrategy}
+          >
+            <div style={{
+              display: 'flex', gap: 16,
+              alignItems: 'flex-start',
+              minWidth: 'max-content',
+            }}>
+              {columnOrder.map(colId => {
+                const col = columns.find(c => c.id === colId)
+                if (!col) return null
+                return (
+                  <KanbanColumn
+                    key={col.id}
+                    column={col}
+                    cards={
+                      search.trim()
+                        ? (cards[col.id] || []).filter(c =>
+                            c.title.toLowerCase().includes(search.toLowerCase()) ||
+                            c.labels?.some(l => l.toLowerCase().includes(search.toLowerCase()))
+                          )
+                        : (cards[col.id] || [])
+                    }
+                    onAddCard={addCard}
+                    onEditCard={openEditCard}
+                    onDeleteCard={deleteCard}
+                    onOpenCard={openCardDetail}
+                    onRename={renameColumn}
+                    onDeleteColumn={deleteColumn}
+                  />
+                )
+              })}
+
+              {/* Add column button */}
+              <button
+                onClick={addColumn}
+                style={{
+                  width: 300, flexShrink: 0,
+                  height: 54,
+                  background: 'rgba(255,255,255,0.03)',
+                  border: '2px dashed var(--border)',
+                  borderRadius: 16,
+                  color: 'var(--text3)', fontSize: 14,
+                  fontWeight: 600, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center',
+                  justifyContent: 'center', gap: 8,
+                  transition: 'all 0.2s',
+                  fontFamily: 'Inter, sans-serif',
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.borderColor = 'var(--accent)'
+                  e.currentTarget.style.color = 'var(--accent)'
+                  e.currentTarget.style.background = 'var(--accent-dim)'
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.borderColor = 'var(--border)'
+                  e.currentTarget.style.color = 'var(--text3)'
+                  e.currentTarget.style.background = 'rgba(255,255,255,0.03)'
+                }}
+              >
+                + Add Column
+              </button>
+            </div>
+          </SortableContext>
+
+          {/* Drag overlays */}
           <DragOverlay>
             {activeCard && (
-              <div style={{ background: 'var(--surface2)', border: '1px solid var(--accent)', borderRadius: 12, padding: '12px 14px', width: 276, boxShadow: '0 16px 48px rgba(0,0,0,0.6)', cursor: 'grabbing', transform: 'rotate(2deg)' }}>
-                <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text)' }}>{activeCard.title}</div>
+              <div style={{
+                background: 'var(--surface2)',
+                border: '1px solid var(--accent)',
+                borderRadius: 12, padding: '12px 14px',
+                width: 276,
+                boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
+                cursor: 'grabbing', transform: 'rotate(2deg)',
+              }}>
+                <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text)' }}>
+                  {activeCard.title}
+                </div>
+              </div>
+            )}
+            {activeColumn && (
+              <div style={{
+                width: 300, background: 'var(--surface)',
+                border: '1px solid var(--accent)',
+                borderRadius: 16, padding: '14px 16px',
+                boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
+                cursor: 'grabbing', transform: 'rotate(1deg)',
+                opacity: 0.9,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{
+                    width: 8, height: 8, borderRadius: '50%',
+                    background: activeColumn.color,
+                  }}/>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
+                    {activeColumn.title}
+                  </span>
+                </div>
               </div>
             )}
           </DragOverlay>
@@ -1108,6 +1823,17 @@ export default function BoardPage() {
           user={user}
           onClose={() => setShowAI(false)}
           onGenerate={generateTasks}
+        />
+      )}
+
+      {/* Stats panel */}
+      {showStats && (
+        <StatsPanel
+          cards={cards}
+          columns={columns}
+          columnOrder={columnOrder}
+          board={board}
+          onClose={() => setShowStats(false)}
         />
       )}
 

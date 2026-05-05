@@ -1,15 +1,7 @@
 import { useNavigate } from 'react-router-dom'
-import { useAuth } from '../hooks/useAuth'
-import { useEffect } from 'react'
 
 export default function Landing() {
   const navigate = useNavigate()
-  const { user, loading } = useAuth()
-
-  // If already logged in go straight to dashboard
-  useEffect(() => {
-    if (!loading && user) navigate('/')
-  }, [user, loading])
 
   return (
     <div style={{ background: 'var(--bg)', minHeight: '100vh', color: 'var(--text)' }}>

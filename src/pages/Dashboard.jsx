@@ -321,6 +321,7 @@ export default function Dashboard() {
       colorIndex: boards.length,
       cardCount: 0,
       createdAt: Date.now(),
+      columnOrder: ['todo', 'inprogress', 'review', 'done'],
     })
   }
 
