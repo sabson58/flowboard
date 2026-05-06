@@ -3,24 +3,23 @@ import { db } from '../firebase/config'
 
 export async function inviteMember(boardId, email) {
   try {
-    // Look up uid from userEmails collection
     const emailDoc = await getDoc(doc(db, 'userEmails', email))
-
     if (!emailDoc.exists()) {
-      return {
-        error: 'No account found with that email. Ask them to sign up on FlowBoard first.'
-      }
+      return { error: 'No account found with that email. Ask them to sign up on FlowBoard first.' }
     }
+    const { uid, name } = emailDoc.data()
 
-    const { uid } = emailDoc.data()
-
-    // Add uid to board's members array
+    // Add uid to board members
     await updateDoc(doc(db, 'boards', boardId), {
       members: arrayUnion(uid)
     })
 
-    return { success: true }
+    // Save uid→profile mapping so we can look up by uid
+    await setDoc(doc(db, 'users', uid), {
+      uid, name, email,
+    }, { merge: true })
 
+    return { success: true, name: name || email }
   } catch (err) {
     return { error: 'Something went wrong. Please try again.' }
   }

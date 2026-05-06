@@ -6,7 +6,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   doc, onSnapshot, collection, addDoc,
-  updateDoc, deleteDoc, query, orderBy
+  updateDoc, deleteDoc, query, orderBy, getDoc
 } from 'firebase/firestore'
 import { db } from '../firebase/config'
 import { useAuth } from '../hooks/useAuth'
@@ -716,7 +716,7 @@ function CardModal({ card, onClose, onSave }) {
 }
 
 // ── INVITE MODAL ──────────────────────────────────────────
-function InviteModal({ boardId, board, user, onClose }) {
+function InviteModal({ boardId, board, user, onClose, memberProfiles }) {
   const [email, setEmail] = useState('')
   const [status, setStatus] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -783,7 +783,12 @@ function InviteModal({ boardId, board, user, onClose }) {
                 <div style={{ width: 20, height: 20, borderRadius: '50%', background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: 'white' }}>
                   {uid === user.uid ? user.displayName?.[0]?.toUpperCase() : '?'}
                 </div>
-                <span style={{ color: 'var(--text2)' }}>{uid === user.uid ? 'You (owner)' : 'Member'}</span>
+                <span style={{ color: 'var(--text2)' }}>
+                  {uid === user.uid
+                    ? `You (${user.displayName || user.email})`
+                    : (memberProfiles?.[uid]?.name || memberProfiles?.[uid]?.email || 'Member')
+                  }
+                </span>
               </div>
             ))}
           </div>
@@ -1216,6 +1221,7 @@ export default function BoardPage() {
   const [showAI, setShowAI] = useState(false)
   const [showStats, setShowStats] = useState(false)
   const [toastMsg, setToastMsg] = useState('')
+  const [memberProfiles, setMemberProfiles] = useState({})
 
   function toast(msg) {
     setToastMsg(msg)
@@ -1270,6 +1276,32 @@ export default function BoardPage() {
     if (board?.columns) setColumns(board.columns)
     if (board?.columnOrder) setColumnOrder(board.columnOrder)
   }, [board])
+
+  // Load member profiles
+  useEffect(() => {
+    if (!board?.members?.length) return
+    async function loadProfiles() {
+      const profiles = {}
+      for (const uid of board.members) {
+        try {
+          // Try users collection first
+          const userSnap = await getDoc(doc(db, 'users', uid))
+          if (userSnap.exists()) {
+            profiles[uid] = userSnap.data()
+            continue
+          }
+          // Fallback — search userEmails for this uid
+          // We store email→uid but not uid→email directly
+          // So just mark as unknown for now
+          profiles[uid] = { name: 'Member', email: '' }
+        } catch (e) {
+          profiles[uid] = { name: 'Member', email: '' }
+        }
+      }
+      setMemberProfiles(profiles)
+    }
+    loadProfiles()
+  }, [board?.members])
 
   useEffect(() => {
     if (!boardId) return
@@ -1560,11 +1592,11 @@ export default function BoardPage() {
                 zIndex: 5 - i,
                 position: 'relative',
               }}
-              title={uid === user.uid ? 'You' : 'Member'}
+              title={uid === user.uid ? `You (${user.displayName || user.email})` : (memberProfiles[uid]?.name || memberProfiles[uid]?.email || 'Member')}
             >
               {uid === user.uid
                 ? user.displayName?.[0]?.toUpperCase()
-                : '?'
+                : (memberProfiles[uid]?.name?.[0]?.toUpperCase() || memberProfiles[uid]?.email?.[0]?.toUpperCase() || '?')
               }
             </div>
           ))}
