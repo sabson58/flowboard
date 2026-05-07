@@ -1527,18 +1527,36 @@ export default function BoardPage() {
         updateDoc(doc(db, 'boards', boardId, 'columns', fromCol, 'cards', card.id), { order: i })
       )
     } else {
-      // Move to different column
+      // Move to different column — optimistic update first
       const card = (cards[fromCol] || []).find(c => c.id === active.id)
       if (!card) return
-      await deleteDoc(doc(db, 'boards', boardId, 'columns', fromCol, 'cards', card.id))
-      const toCards = cards[toCol] || []
-      await addDoc(
-        collection(db, 'boards', boardId, 'columns', toCol, 'cards'),
-        { ...card, order: toCards.length, createdAt: Date.now() }
-      )
-      const colName = columns.find(c => c.id === toCol)?.title
-      await logActivity(boardId, user, `moved "${card.title}" to ${colName}`)
-      if (toCol === 'done') fireConfetti()
+
+      // ── Update local state immediately ──
+      setCards(prev => ({
+        ...prev,
+        [fromCol]: (prev[fromCol] || []).filter(c => c.id !== active.id),
+        [toCol]: [...(prev[toCol] || []), { ...card, status: toCol }],
+      }))
+
+      // ── Then sync to Firestore ──
+      try {
+        await deleteDoc(doc(db, 'boards', boardId, 'columns', fromCol, 'cards', card.id))
+        const toCards = cards[toCol] || []
+        await addDoc(
+          collection(db, 'boards', boardId, 'columns', toCol, 'cards'),
+          { ...card, order: toCards.length, createdAt: Date.now() }
+        )
+        const colName = columns.find(c => c.id === toCol)?.title
+        await logActivity(boardId, user, `moved "${card.title}" to ${colName}`)
+        if (toCol === 'done') fireConfetti()
+      } catch (e) {
+        // Revert on error
+        setCards(prev => ({
+          ...prev,
+          [fromCol]: [...(prev[fromCol] || []), card],
+          [toCol]: (prev[toCol] || []).filter(c => c.id !== active.id),
+        }))
+      }
     }
   }
 
