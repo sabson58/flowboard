@@ -913,33 +913,37 @@ export default function BoardPage() {
       const card = (cards[fromCol] || []).find(c => c.id === active.id)
       if (!card) { isDraggingRef.current = false; return }
 
-      // Apply optimistic update immediately
-      const newCardsState = {
-        ...cards,
-        [fromCol]: (cards[fromCol] || []).filter(c => c.id !== active.id),
-        [toCol]: [...(cards[toCol] || []), { ...card, columnId: toCol }],
-      }
-      setCards(newCardsState)
+      // Optimistic UI update
+      const newOrder = (cards[toCol] || []).length
+      setCards(prev => ({
+        ...prev,
+        [fromCol]: (prev[fromCol] || []).filter(c => c.id !== active.id),
+        [toCol]: [...(prev[toCol] || []), { ...card, columnId: toCol, order: newOrder }],
+      }))
 
-      // Unblock listener AFTER setting optimistic state
-      isDraggingRef.current = false
-      pendingCardsRef.current = null
-
+      // Keep listener BLOCKED until both writes are done
       try {
         await deleteDoc(doc(db, 'boards', boardId, 'columns', fromCol, 'cards', card.id))
-        const toCards = cards[toCol] || []
-        await addDoc(collection(db, 'boards', boardId, 'columns', toCol, 'cards'), { ...card, order: toCards.length, createdAt: Date.now() })
+        await addDoc(collection(db, 'boards', boardId, 'columns', toCol, 'cards'), {
+          ...card,
+          order: newOrder,
+          createdAt: Date.now(),
+        })
         const colName = columns.find(c => c.id === toCol)?.title
         await logActivity(boardId, user, `moved "${card.title}" to ${colName}`)
         if (toCol === 'done') fireConfetti()
       } catch (e) {
         console.error('Move failed:', e)
-        // Revert on error
+        // Revert optimistic update
         setCards(prev => ({
           ...prev,
           [fromCol]: [...(prev[fromCol] || []), card],
-          [toCol]: (prev[toCol] || []).filter(c => c.id !== active.id),
+          [toCol]: (prev[toCol] || []).filter(c => c.id !== card.id),
         }))
+      } finally {
+        // ✅ Unblock ONLY after both writes complete (or fail)
+        isDraggingRef.current = false
+        pendingCardsRef.current = null
       }
     }
   }
