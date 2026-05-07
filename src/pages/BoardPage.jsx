@@ -1391,9 +1391,31 @@ export default function BoardPage() {
   }
 
   async function deleteCard(cardId, columnId) {
-    const card = (cards[columnId] || []).find(c => c.id === cardId)
-    await deleteDoc(doc(db, 'boards', boardId, 'columns', columnId, 'cards', cardId))
-    if (card) await logActivity(boardId, user, `deleted "${card.title}"`)
+    try {
+      // Find which column actually has this card (handles stale columnId after drag)
+      let actualColumnId = columnId
+      let cardData = null
+
+      for (const [colId, colCards] of Object.entries(cards)) {
+        const found = colCards.find(c => c.id === cardId)
+        if (found) {
+          actualColumnId = colId
+          cardData = found
+          break
+        }
+      }
+
+      // Optimistic update
+      setCards(prev => ({
+        ...prev,
+        [actualColumnId]: (prev[actualColumnId] || []).filter(c => c.id !== cardId)
+      }))
+
+      await deleteDoc(doc(db, 'boards', boardId, 'columns', actualColumnId, 'cards', cardId))
+      if (cardData) await logActivity(boardId, user, `deleted "${cardData.title}"`)
+    } catch (e) {
+      console.error('Delete failed:', e)
+    }
   }
 
   function openCardDetail(card, columnId) {
