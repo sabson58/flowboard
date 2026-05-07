@@ -35,7 +35,7 @@ function PublicRoute({ children }) {
 
 export default function App() {
   return (
-    <BrowserRouter basename="/flowboard">
+    <BrowserRouter>
       <Routes>
         <Route path="/landing" element={
           <PublicRoute><Landing /></PublicRoute>

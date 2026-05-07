@@ -12,7 +12,8 @@ import { db } from '../firebase/config'
 import { useAuth } from '../hooks/useAuth'
 import {
   DndContext, DragOverlay, PointerSensor,
-  useSensor, useSensors, closestCorners
+  useSensor, useSensors, closestCorners,
+  useDroppable
 } from '@dnd-kit/core'
 import {
   SortableContext, verticalListSortingStrategy,
@@ -20,6 +21,10 @@ import {
   useSortable, arrayMove
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, Legend
+} from 'recharts'
 
 // ── CONSTANTS ─────────────────────────────────────────────
 const DEFAULT_COLUMNS = [
@@ -392,9 +397,18 @@ function KanbanCard({ card, columnId, onEdit, onDelete, onOpen }) {
     <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
       <div
         style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 14px', marginBottom: 8, cursor: 'grab', transition: 'all 0.15s', position: 'relative', userSelect: 'none' }}
-        onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border2)'; e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.3)' }}
-        onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none' }}
+        onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border2)'; e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.3)'; e.currentTarget.querySelector('.drag-handle').style.opacity = '1' }}
+        onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; e.currentTarget.querySelector('.drag-handle').style.opacity = '0' }}
       >
+        {/* Drag handle */}
+        <div className="drag-handle" style={{ position: 'absolute', top: 8, right: 8, opacity: 0, transition: 'opacity 0.15s', display: 'flex', flexDirection: 'column', gap: 2, padding: '2px 3px', borderRadius: 4, background: 'var(--surface3)', cursor: 'grab' }}>
+          {[0,1,2].map(i => (
+            <div key={i} style={{ display: 'flex', gap: 2 }}>
+              <div style={{ width: 3, height: 3, borderRadius: '50%', background: 'var(--text3)' }}/>
+              <div style={{ width: 3, height: 3, borderRadius: '50%', background: 'var(--text3)' }}/>
+            </div>
+          ))}
+        </div>
         {card.labels?.length > 0 && (
           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
             {card.labels.map((l, i) => <span key={i} style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 4, background: 'var(--accent-dim)', color: 'var(--accent2)' }}>{l}</span>)}
@@ -457,11 +471,16 @@ function KanbanCard({ card, columnId, onEdit, onDelete, onOpen }) {
 // ── KANBAN COLUMN ─────────────────────────────────────────
 function KanbanColumn({ column, cards, onAddCard, onEditCard, onDeleteCard, onOpenCard, onRename, onDeleteColumn }) {
   const {
-    attributes, listeners, setNodeRef,
+    attributes, listeners, setNodeRef: setSortableRef,
     transform, transition, isDragging
   } = useSortable({
     id: column.id,
     data: { type: 'column', column }
+  })
+
+  const { setNodeRef: setDroppableRef, isOver } = useDroppable({
+    id: column.id,
+    data: { columnId: column.id }
   })
 
   const style = {
@@ -481,7 +500,7 @@ function KanbanColumn({ column, cards, onAddCard, onEditCard, onDeleteCard, onOp
 
   return (
     <div
-      ref={setNodeRef}
+      ref={setSortableRef}
       style={{
         ...style,
         width: 300, flexShrink: 0,
@@ -586,7 +605,15 @@ function KanbanColumn({ column, cards, onAddCard, onEditCard, onDeleteCard, onOp
       </div>
 
       {/* Cards */}
-      <div style={{ padding: '12px', overflowY: 'auto', flex: 1 }}>
+      <div
+        ref={setDroppableRef}
+        style={{
+          padding: '12px', overflowY: 'auto', flex: 1,
+          background: isOver ? 'rgba(124,106,255,0.05)' : 'transparent',
+          transition: 'background 0.2s',
+          minHeight: 80,
+        }}
+      >
         <SortableContext
           items={cards.map(c => c.id)}
           strategy={verticalListSortingStrategy}
@@ -606,10 +633,13 @@ function KanbanColumn({ column, cards, onAddCard, onEditCard, onDeleteCard, onOp
         {cards.length === 0 && !adding && (
           <div style={{
             textAlign: 'center', padding: '2rem 1rem',
-            color: 'var(--text3)', fontSize: 13,
-            border: '2px dashed var(--border)', borderRadius: 10,
+            color: isOver ? 'var(--accent)' : 'var(--text3)',
+            fontSize: 13,
+            border: `2px dashed ${isOver ? 'var(--accent)' : 'var(--border)'}`,
+            borderRadius: 10,
+            transition: 'all 0.2s',
           }}>
-            No cards yet
+            {isOver ? '📥 Drop here' : 'No cards yet'}
           </div>
         )}
 
@@ -975,6 +1005,22 @@ function ShortcutsModal({ onClose }) {
   )
 }
 
+// ── CHART TOOLTIP ────────────────────────────────────────
+function ChartTooltip({ active, payload, label }) {
+  if (!active || !payload?.length) return null
+  return (
+    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', boxShadow: '0 4px 16px rgba(0,0,0,0.4)', fontSize: 12 }}>
+      {label && <div style={{ fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>{label}</div>}
+      {payload.map((p, i) => (
+        <div key={i} style={{ color: p.color || 'var(--text2)', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ width: 7, height: 7, borderRadius: '50%', background: p.color, flexShrink: 0 }}/>
+          <span>{p.name || 'Count'}: <strong>{p.value}</strong></span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ── STATS PANEL ───────────────────────────────────────────
 function StatsPanel({ cards, columns, columnOrder, board, onClose }) {
   const allCards = Object.values(cards).flat()
@@ -982,64 +1028,58 @@ function StatsPanel({ cards, columns, columnOrder, board, onClose }) {
   const done = (cards['done'] || []).length
   const highPriority = allCards.filter(c => c.priority === 'high').length
   const overdue = allCards.filter(c => {
-    if (!c.dueDate || c.completed) return false
+    if (!c.dueDate) return false
     return new Date(c.dueDate) < new Date()
   }).length
   const assigned = allCards.filter(c => c.assignedTo).length
   const completion = total ? Math.round((done / total) * 100) : 0
 
-  const colData = columnOrder.map(id => {
+  // Bar chart data
+  const barData = columnOrder.map(id => {
     const col = columns.find(c => c.id === id)
-    return { title: col?.title || id, count: (cards[id] || []).length, color: col?.color || '#6b7280' }
+    return { name: col?.title?.slice(0, 8) || id, count: (cards[id] || []).length, color: col?.color || '#6b7280' }
   })
 
-  const priorities = [
-    { label: 'High', color: '#ff4d4d', bg: 'rgba(255,77,77,0.12)', count: allCards.filter(c => c.priority === 'high').length },
-    { label: 'Medium', color: '#ffd44d', bg: 'rgba(255,212,77,0.12)', count: allCards.filter(c => c.priority === 'medium').length },
-    { label: 'Low', color: '#4dff91', bg: 'rgba(77,255,145,0.12)', count: allCards.filter(c => c.priority === 'low').length },
-  ]
+  // Pie chart data
+  const pieData = [
+    { name: 'High',   value: allCards.filter(c => c.priority === 'high').length,   color: '#ff4d4d' },
+    { name: 'Medium', value: allCards.filter(c => c.priority === 'medium').length, color: '#ffd44d' },
+    { name: 'Low',    value: allCards.filter(c => c.priority === 'low').length,    color: '#4dff91' },
+  ].filter(d => d.value > 0)
 
-  const maxCol = Math.max(...colData.map(c => c.count), 1)
+  const priorities = [
+    { label: 'High',   color: '#ff4d4d', bg: 'rgba(255,77,77,0.12)',  count: allCards.filter(c => c.priority === 'high').length },
+    { label: 'Medium', color: '#ffd44d', bg: 'rgba(255,212,77,0.12)', count: allCards.filter(c => c.priority === 'medium').length },
+    { label: 'Low',    color: '#4dff91', bg: 'rgba(77,255,145,0.12)', count: allCards.filter(c => c.priority === 'low').length },
+  ]
 
   return (
     <div style={{
       position: 'fixed', top: 56, right: 0, bottom: 0,
-      width: 340, background: 'var(--surface)',
+      width: 360, background: 'var(--surface)',
       borderLeft: '1px solid var(--border)',
-      zIndex: 50, display: 'flex',
-      flexDirection: 'column',
-      animation: 'slideInRight 0.25s ease',
-      overflowY: 'auto',
+      zIndex: 50, display: 'flex', flexDirection: 'column',
+      animation: 'slideInRight 0.25s ease', overflowY: 'auto',
     }}>
       {/* Header */}
-      <div style={{
-        padding: '1rem 1.25rem',
-        borderBottom: '1px solid var(--border)',
-        display: 'flex', alignItems: 'center',
-        justifyContent: 'space-between',
-        position: 'sticky', top: 0,
-        background: 'var(--surface)', zIndex: 1,
-      }}>
+      <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, background: 'var(--surface)', zIndex: 1 }}>
         <span style={{ fontSize: 14, fontWeight: 700 }}>📊 Board Stats</span>
         <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text2)', cursor: 'pointer', fontSize: 18 }}>×</button>
       </div>
 
       <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
 
-        {/* KPI Cards */}
+        {/* KPI grid */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           {[
-            { label: 'Total Cards', value: total, color: 'var(--text)' },
-            { label: 'Completed', value: done, color: 'var(--green)' },
-            { label: 'High Priority', value: highPriority, color: 'var(--red)' },
-            { label: 'Overdue', value: overdue, color: overdue > 0 ? 'var(--red)' : 'var(--text3)' },
-            { label: 'Assigned', value: assigned, color: 'var(--accent)' },
-            { label: 'Unassigned', value: total - assigned, color: 'var(--text3)' },
+            { label: 'Total Cards',   value: total,          color: 'var(--text)'   },
+            { label: 'Completed',     value: done,           color: 'var(--green)'  },
+            { label: 'High Priority', value: highPriority,   color: 'var(--red)'    },
+            { label: 'Overdue',       value: overdue,        color: overdue > 0 ? 'var(--red)' : 'var(--text3)' },
+            { label: 'Assigned',      value: assigned,       color: 'var(--accent)' },
+            { label: 'Unassigned',    value: total-assigned, color: 'var(--text3)'  },
           ].map(kpi => (
-            <div key={kpi.label} style={{
-              background: 'var(--surface2)', border: '1px solid var(--border)',
-              borderRadius: 12, padding: '12px', textAlign: 'center', transition: 'all 0.2s',
-            }}
+            <div key={kpi.label} style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px', textAlign: 'center', transition: 'all 0.2s' }}
               onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border2)'}
               onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
             >
@@ -1049,74 +1089,77 @@ function StatsPanel({ cards, columns, columnOrder, board, onClose }) {
           ))}
         </div>
 
-        {/* Completion progress */}
+        {/* Overall progress */}
         <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 12, padding: '1rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
             <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>Overall Progress</span>
-            <span style={{
-              fontSize: 18, fontWeight: 800, letterSpacing: '-0.02em',
-              color: completion >= 70 ? 'var(--green)' : completion >= 40 ? 'var(--yellow)' : 'var(--red)',
-            }}>{completion}%</span>
+            <span style={{ fontSize: 18, fontWeight: 800, letterSpacing: '-0.02em', color: completion >= 70 ? 'var(--green)' : completion >= 40 ? 'var(--amber)' : 'var(--accent)' }}>{completion}%</span>
           </div>
           <div style={{ height: 8, background: 'var(--surface3)', borderRadius: 4, overflow: 'hidden' }}>
-            <div style={{
-              height: '100%', width: `${completion}%`,
-              background: completion >= 70 ? 'var(--green)' : completion >= 40 ? 'var(--yellow)' : 'var(--accent)',
-              borderRadius: 4, transition: 'width 0.8s cubic-bezier(0.4,0,0.2,1)',
-            }}/>
+            <div style={{ height: '100%', width: `${completion}%`, background: completion >= 70 ? 'var(--green)' : completion >= 40 ? 'var(--amber)' : 'var(--accent)', borderRadius: 4, transition: 'width 0.8s cubic-bezier(0.4,0,0.2,1)' }}/>
           </div>
-          <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 6, textAlign: 'right' }}>
-            {done} of {total} cards done
-          </div>
+          <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 6, textAlign: 'right' }}>{done} of {total} cards done</div>
         </div>
 
-        {/* Cards per column bar chart */}
+        {/* Bar chart — cards per column */}
         <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 12, padding: '1rem' }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', marginBottom: '1rem' }}>Cards per Column</div>
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 80 }}>
-            {colData.map((col, i) => (
-              <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, height: '100%', justifyContent: 'flex-end' }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: col.count > 0 ? 'var(--text2)' : 'transparent' }}>{col.count}</span>
-                <div style={{
-                  width: '100%',
-                  height: `${Math.max((col.count / maxCol) * 60, col.count > 0 ? 6 : 2)}px`,
-                  background: col.count > 0 ? col.color : 'var(--border)',
-                  borderRadius: '4px 4px 0 0',
-                  transition: 'height 0.6s cubic-bezier(0.4,0,0.2,1)',
-                  boxShadow: col.count > 0 ? `0 0 12px ${col.color}40` : 'none',
-                }}/>
-                <span style={{ fontSize: 9, color: 'var(--text3)', fontWeight: 600, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%' }}>
-                  {col.title.slice(0, 6)}
-                </span>
-              </div>
-            ))}
+          <div style={{ height: 160 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={barData} margin={{ top: 4, right: 4, left: -24, bottom: 0 }}>
+                <XAxis dataKey="name" tick={{ fontSize: 10, fill: 'var(--text3)' }} tickLine={false} axisLine={false} />
+                <YAxis tick={{ fontSize: 10, fill: 'var(--text3)' }} tickLine={false} axisLine={false} allowDecimals={false} />
+                <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
+                <Bar dataKey="count" name="Cards" radius={[4, 4, 0, 0]}>
+                  {barData.map((entry, i) => (
+                    <Cell key={i} fill={entry.color} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
           </div>
         </div>
 
-        {/* Priority breakdown */}
-        <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 12, padding: '1rem' }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', marginBottom: '1rem' }}>Priority Breakdown</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {priorities.map(p => (
-              <div key={p.label}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
-                  <span style={{ fontSize: 11, fontWeight: 600, color: p.color, background: p.bg, padding: '2px 8px', borderRadius: 6 }}>{p.label}</span>
-                  <span style={{ fontSize: 11, color: 'var(--text2)', fontWeight: 600 }}>
-                    {p.count} card{p.count !== 1 ? 's' : ''}
-                    {total > 0 && <span style={{ color: 'var(--text3)', fontWeight: 400 }}> ({Math.round((p.count / total) * 100)}%)</span>}
-                  </span>
-                </div>
-                <div style={{ height: 5, background: 'var(--surface3)', borderRadius: 3, overflow: 'hidden' }}>
-                  <div style={{
-                    height: '100%', width: total > 0 ? `${(p.count / total) * 100}%` : '0%',
-                    background: p.color, borderRadius: 3,
-                    transition: 'width 0.6s cubic-bezier(0.4,0,0.2,1)',
-                  }}/>
-                </div>
+        {/* Pie chart — priority breakdown */}
+        {pieData.length > 0 && (
+          <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 12, padding: '1rem' }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', marginBottom: '1rem' }}>Priority Breakdown</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ height: 140, flex: 1 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={pieData} cx="50%" cy="50%" innerRadius={38} outerRadius={62} paddingAngle={3} dataKey="value">
+                      {pieData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                    </Pie>
+                    <Tooltip content={<ChartTooltip />} />
+                  </PieChart>
+                </ResponsiveContainer>
               </div>
-            ))}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {pieData.map(p => (
+                  <div key={p.name} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                    <div style={{ width: 10, height: 10, borderRadius: '50%', background: p.color, flexShrink: 0 }}/>
+                    <span style={{ fontSize: 12, color: 'var(--text2)', flex: 1 }}>{p.name}</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: p.color }}>{p.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {priorities.map(p => (
+                <div key={p.label}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: p.color, background: p.bg, padding: '1px 8px', borderRadius: 5 }}>{p.label}</span>
+                    <span style={{ fontSize: 11, color: 'var(--text2)' }}>{p.count} card{p.count !== 1 ? 's' : ''} ({total > 0 ? Math.round((p.count/total)*100) : 0}%)</span>
+                  </div>
+                  <div style={{ height: 5, background: 'var(--surface3)', borderRadius: 3, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: total > 0 ? `${(p.count/total)*100}%` : '0%', background: p.color, borderRadius: 3, transition: 'width 0.6s ease' }}/>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Board info */}
         <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 12, padding: '1rem' }}>
@@ -1450,7 +1493,6 @@ export default function BoardPage() {
     if (!over) return
 
     const activeType = active.data.current?.type
-    const overType = over.data.current?.type
 
     // ── Column reorder ──────────────────────────
     if (activeType === 'column') {
@@ -1465,20 +1507,27 @@ export default function BoardPage() {
     }
 
     // ── Card move ───────────────────────────────
-    const fromCol = active.data.current.columnId
-    const toCol = over.data.current?.columnId || fromCol
+    const fromCol = active.data.current?.columnId
+
+    // Get destination column — could be from card data or column droppable
+    const toCol = over.data.current?.columnId || over.id
+
+    // Validate toCol is a real column
+    if (!toCol || !columns.find(c => c.id === toCol)) return
 
     if (fromCol === toCol) {
+      // Reorder within same column
       const colCards = [...(cards[fromCol] || [])]
       const oldIdx = colCards.findIndex(c => c.id === active.id)
       const newIdx = colCards.findIndex(c => c.id === over.id)
-      if (oldIdx === newIdx) return
+      if (oldIdx === newIdx || newIdx === -1) return
       const reordered = arrayMove(colCards, oldIdx, newIdx)
       setCards(prev => ({ ...prev, [fromCol]: reordered }))
       reordered.forEach((card, i) =>
         updateDoc(doc(db, 'boards', boardId, 'columns', fromCol, 'cards', card.id), { order: i })
       )
     } else {
+      // Move to different column
       const card = (cards[fromCol] || []).find(c => c.id === active.id)
       if (!card) return
       await deleteDoc(doc(db, 'boards', boardId, 'columns', fromCol, 'cards', card.id))
@@ -1489,10 +1538,7 @@ export default function BoardPage() {
       )
       const colName = columns.find(c => c.id === toCol)?.title
       await logActivity(boardId, user, `moved "${card.title}" to ${colName}`)
-
-      if (toCol === 'done') {
-        fireConfetti()
-      }
+      if (toCol === 'done') fireConfetti()
     }
   }
 
